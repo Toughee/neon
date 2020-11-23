@@ -4,6 +4,30 @@ extern crate ureq;
 
 use cfg_if::cfg_if;
 
+#[cfg(feature = "neon-sys")]
+fn set_lib_output_file() -> () {}
+
+#[cfg(not(feature = "neon-sys"))]
+fn set_lib_output_file() -> () {
+    let manifest_dir = std::env::var_os("CARGO_MANIFEST_DIR").unwrap();
+    let output = std::path::Path::new(&manifest_dir).join("index.node");
+
+    #[cfg(windows)]
+    {
+        let out_dir = std::env::var_os("OUT_DIR").unwrap();
+        let pdb_file = std::path::Path::new(&out_dir).join("index.pdb");
+
+        println!("cargo:rustc-cdylib-link-arg=/OUT:{}", output.display());
+        println!("cargo:rustc-cdylib-link-arg=/PDB:{}", pdb_file.display());
+    }
+
+    #[cfg(not(windows))]
+    {
+        println!("cargo:rustc-cdylib-link-arg=-o");
+        println!("cargo:rustc-cdylib-link-arg={}", output.display());
+    }
+}
+
 cfg_if! {
     if #[cfg(all(windows, feature = "neon-sys"))] {
         use std::env::var;
@@ -106,14 +130,20 @@ cfg_if! {
             println!("cargo:rustc-link-lib=node-{}", arch);
             println!("cargo:rustc-cdylib-link-arg=delayimp.lib");
             println!("cargo:rustc-cdylib-link-arg=/DELAYLOAD:node.exe");
+
+            set_lib_output_file();
         }
     } else if #[cfg(target_os = "macos")] {
         /// Set up the build environment by setting Cargo configuration variables.
         pub fn setup() {
             println!("cargo:rustc-cdylib-link-arg=-undefined");
             println!("cargo:rustc-cdylib-link-arg=dynamic_lookup");
+
+            set_lib_output_file();
         }
     } else {
-        pub fn setup() { }
+        pub fn setup() {
+            set_lib_output_file();
+        }
     }
 }
